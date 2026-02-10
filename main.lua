@@ -1,10 +1,12 @@
--- MATRIX HUB V2.2 - UNLOAD & GHOST PROTECTION
--- Description: Added Unload function and fixed target re-locking.
+-- MATRIX HUB V2.3 - PATHFINDING & OBSTACLE AVOIDANCE
+-- Description: Uses PathfindingService to navigate around tables and walls.
 
+local PathfindingService = game:GetService("PathfindingService")
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
 local Window = Rayfield:CreateWindow({
-   Name = "MATRIX | V2.2 PRO",
-   LoadingTitle = "Initializing Ghost Protection...",
+   Name = "MATRIX | PATHFINDING V2.3",
+   LoadingTitle = "Calculating Navigation Meshes...",
    ConfigurationSaving = { Enabled = false }
 })
 
@@ -12,7 +14,7 @@ local FarmTab = Window:CreateTab("Auto Farm", 4483362458)
 local SettingsTab = Window:CreateTab("Settings", 4483362458)
 
 _G.AutoFarm = false
-local IgnoreList = {} -- Ide kerülnek a már kitakarított pocsolyák
+local IgnoreList = {}
 
 -- UNLOAD FUNKCIÓ
 SettingsTab:CreateButton({
@@ -20,12 +22,64 @@ SettingsTab:CreateButton({
    Callback = function()
       _G.AutoFarm = false
       Rayfield:Destroy()
-      print("Matrix: Script Unloaded Successfully")
+      print("Matrix: Unloaded")
    end,
 })
 
+-- ÚTVONALKERESŐ FUNKCIÓ
+local function WalkTo(targetPart)
+    local player = game.Players.LocalPlayer
+    local character = player.Character
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local root = character:FindFirstChild("HumanoidRootPart")
+    
+    -- Útvonal kiszámítása
+    local path = PathfindingService:CreatePath({
+        AgentRadius = 2,
+        AgentHeight = 5,
+        AgentCanJump = true,
+        AgentJumpHeight = 10,
+    })
+    
+    local success, errorMessage = pcall(function()
+        path:ComputeAsync(root.Position, targetPart.Position)
+    end)
+    
+    if success and path.Status == Enum.PathStatus.Success then
+        local waypoints = path:GetWaypoints()
+        
+        for i, waypoint in ipairs(waypoints) do
+           if not _G.AutoFarm then break end
+           
+           -- Ha a pont ugrást igényel
+           if waypoint.Action == Enum.PathWaypointAction.Jump then
+               humanoid.Jump = true
+           end
+           
+           humanoid:MoveTo(waypoint.Position)
+           
+           -- Megvárjuk, amíg az adott ponthoz odaér
+           local reached = false
+           local conn = humanoid.MoveToFinished:Connect(function() reached = true end)
+           
+           -- Ha túl sokáig tart egy pont (beragadt), ugrunk a következőre
+           local t = 0
+           while not reached and t < 2 do
+               task.wait(0.1)
+               t = t + 0.1
+           end
+           conn:Disconnect()
+        end
+        return true
+    else
+        -- Ha a Pathfinding nem sikerül (pl. elzárt hely), próbáljuk a sima MoveTo-t
+        humanoid:MoveTo(targetPart.Position)
+        return false
+    end
+end
+
 FarmTab:CreateToggle({
-   Name = "Smart Walk Farm (Improved)",
+   Name = "GPS Guided Auto Farm",
    CurrentValue = false,
    Callback = function(Value)
       _G.AutoFarm = Value
@@ -34,17 +88,13 @@ FarmTab:CreateToggle({
             while _G.AutoFarm do
                task.wait(0.5)
                pcall(function()
-                  local player = game.Players.LocalPlayer
-                  local root = player.Character.HumanoidRootPart
-                  local humanoid = player.Character.Humanoid
+                  local root = game.Players.LocalPlayer.Character.HumanoidRootPart
                   
-                  -- 1. KERESÉS (Kiszűrve az IgnoreList-et)
+                  -- CÉLPONT KERESÉSE
                   local target = nil
                   local minDist = 200
-
                   for _, v in pairs(workspace:GetDescendants()) do
                      if v:IsA("BasePart") and (v.Name:lower():find("puddle") or v.Name:lower():find("spill")) then
-                        -- Csak ha nem voltunk még rajta ÉS nem átlátszó (már eltűnt)
                         if not IgnoreList[v] and v.Transparency < 1 then
                            local d = (root.Position - v.Position).Magnitude
                            if d < minDist then
@@ -55,29 +105,14 @@ FarmTab:CreateToggle({
                      end
                   end
 
-                  -- 2. MOZGÁS ÉS TAKARÍTÁS
+                  -- MOZGÁS ÉS TAKARÍTÁS
                   if target then
-                     print("Matrix: New target found: " .. target.Name)
-                     humanoid:MoveTo(target.Position)
+                     print("Matrix: Navigating to " .. target.Name)
+                     local reached = WalkTo(target)
                      
-                     local reached = false
-                     local conn = humanoid.MoveToFinished:Connect(function() reached = true end)
-                     
-                     -- Várunk amíg odaér (max 10mp)
-                     local t = 0
-                     while not reached and t < 10 and _G.AutoFarm do
-                        task.wait(0.2)
-                        t = t + 0.2
-                     end
-                     conn:Disconnect()
-
                      if reached then
-                        -- Behelyezzük az ignore listába, hogy ne jöjjön vissza ide
                         IgnoreList[target] = true
-                        
-                        -- Dinamikus várakozás
                         local waitTime = (target.Size.Magnitude > 10) and 11 or 6
-                        print("Matrix: Cleaning... Waiting " .. waitTime .. "s")
                         task.wait(waitTime)
                      end
                   end
@@ -85,7 +120,6 @@ FarmTab:CreateToggle({
             end
          end)
       else
-         -- Ha kikapcsolod, ürítjük a listát, hogy legközelebb megint lássa őket
          IgnoreList = {}
       end
    end,
