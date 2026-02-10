@@ -1,5 +1,5 @@
--- MATRIX HUB V3.2 - ULTIMATE FAILSAFE
--- Description: Dynamic cleaning check to bypass CoreGui and Animation errors.
+-- MATRIX HUB V3.3 - THE "ERROR BYPASS" EDITION
+-- Logic: Forced position reset if the game engine freezes.
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Navigation = loadstring(game:HttpGet("https://raw.githubusercontent.com/walterblack-lab/matrix/refs/heads/main/navigation.lua"))()
@@ -8,15 +8,17 @@ _G.AutoFarm = false
 local IgnoreList = {}
 
 local Window = Rayfield:CreateWindow({
-   Name = "MATRIX | ANTI-FREEZE V3.2",
-   LoadingTitle = "Bypassing Game Errors...",
+   Name = "MATRIX HUB | V3.3 FIX",
+   LoadingTitle = "Bypassing Engine Errors...",
+   Theme = "Green",
    ConfigurationSaving = { Enabled = false }
 })
 
 local FarmTab = Window:CreateTab("Auto Farm", 4483362458)
+local SettingsTab = Window:CreateTab("Settings", 4483362458)
 
 FarmTab:CreateToggle({
-   Name = "Dynamic Cleaning Farm",
+   Name = "Ultra Farm (Anti-Stuck)",
    CurrentValue = false,
    Callback = function(Value)
       _G.AutoFarm = Value
@@ -25,11 +27,12 @@ FarmTab:CreateToggle({
             while _G.AutoFarm do
                task.wait(0.5)
                pcall(function()
-                  local root = game.Players.LocalPlayer.Character.HumanoidRootPart
+                  local player = game.Players.LocalPlayer
+                  local root = player.Character.HumanoidRootPart
                   local target = nil
                   local minDist = 200
 
-                  -- 1. KERESÉS
+                  -- KERESÉS
                   for _, v in pairs(workspace:GetDescendants()) do
                      if v:IsA("BasePart") and v.Name:lower():find("puddle") then
                         if not IgnoreList[v] and v.Transparency < 1 then
@@ -42,28 +45,36 @@ FarmTab:CreateToggle({
                      end
                   end
 
-                  -- 2. MOZGÁS ÉS OKOS VÁRAKOZÁS
                   if target then
-                     local reached = Navigation.WalkTo(target.Position)
+                     -- MOZGÁS INDÍTÁSA
+                     local moveTask = task.spawn(function()
+                        Navigation.WalkTo(target.Position)
+                     end)
                      
-                     if reached then
-                        IgnoreList[target] = true
-                        print("Matrix: Standing on puddle. Monitoring progress...")
-                        
-                        local startTime = tick()
-                        local timeLimit = (target.Size.Magnitude > 10) and 13 or 8
-                        
-                        -- FAILSAFE CIKLUS: Addig várunk, amíg ott a folt, 
-                        -- DE ha lefagy a játék (piros hiba), az időkorlát továbbléptet.
-                        while target and target.Parent == workspace and target.Transparency < 1 and _G.AutoFarm do
-                           task.wait(0.5)
-                           if (tick() - startTime) > timeLimit then
-                              warn("Matrix: Game freeze detected (Animation/UI error). Forcing next target.")
-                              break 
+                     -- MÁSODIK FAILSAFE: Figyeljük, hogy tényleg mozgunk-e
+                     local lastPos = root.Position
+                     local stuckTime = 0
+                     
+                     while _G.AutoFarm and target and target.Parent == workspace do
+                        task.wait(1)
+                        -- Ha 3 másodperce ugyanott vagyunk, de még nem értünk oda
+                        if (root.Position - lastPos).Magnitude < 1 then
+                           stuckTime = stuckTime + 1
+                           if stuckTime >= 3 then
+                              warn("Matrix: ENGINE FREEZE DETECTED. FORCING RESET.")
+                              player.Character.Humanoid.Jump = true -- Felébresztjük a fizikát
+                              task.cancel(moveTask) -- Megszakítjuk a beragadt navigációt
+                              break -- Új keresés indul
                            end
+                        else
+                           stuckTime = 0
                         end
-                        print("Matrix: Spot cleared or bypassed.")
+                        lastPos = root.Position
+                        
+                        -- Ha odaértünk és eltűnt a pocsolya
+                        if target.Transparency >= 1 or not target.Parent then break end
                      end
+                     IgnoreList[target] = true
                   end
                end)
             end
@@ -74,13 +85,11 @@ FarmTab:CreateToggle({
    end,
 })
 
--- Settings / Manual Reset
-local SettingsTab = Window:CreateTab("Settings", 4483362458)
 SettingsTab:CreateButton({
-   Name = "Clear Ignore List (If stuck)",
+   Name = "Clear Ignore List & Reset UI",
    Callback = function()
       IgnoreList = {}
-      Rayfield:Notify({Title = "System Reset", Content = "Ignore list cleared!", Duration = 2})
+      Rayfield:Notify({Title = "System", Content = "Full Reset Complete", Duration = 3})
    end,
 })
 
