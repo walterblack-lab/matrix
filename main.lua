@@ -1,6 +1,4 @@
--- MATRIX HUB V4.4 - LIVE LEVEL & XP SYNC
--- Description: Constantly updates level/XP and adapts the farm logic.
-
+-- MATRIX HUB V4.7 - FINAL FIX
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local PathLogic = loadstring(game:HttpGet("https://raw.githubusercontent.com/walterblack-lab/matrix/refs/heads/main/path_logic.lua"))()
 local Mover = loadstring(game:HttpGet("https://raw.githubusercontent.com/walterblack-lab/matrix/refs/heads/main/mover.lua"))()
@@ -8,56 +6,42 @@ local Mover = loadstring(game:HttpGet("https://raw.githubusercontent.com/walterb
 _G.AutoFarm = false
 local IgnoreList = {}
 
--- === ADATOK LEKÉRÉSE (ÉLŐBEN) ===
-local function GetJanitorData()
+local function GetJanitorLevel()
     local p = game.Players.LocalPlayer
-    local data = { level = 18, xp = "0/0" }
-    
+    local lvl = 1
     pcall(function()
-        local skills = p.PlayerGui.Skills.SkillsHolder.SkillsScrollingFrame:FindFirstChild("SkillOptionTemplate")
-        if skills then
-            -- Szint kinyerése
-            local lvlText = skills.SkillTitle.Text
-            data.level = tonumber(lvlText:match("%d+")) or 18
-            
-            -- XP kinyerése (Scanner alapján: XPBar.SkillBarAmount)
-            local xpBar = skills.PaddingFrame:FindFirstChild("XPBar")
-            if xpBar and xpBar:FindFirstChild("SkillBarAmount") then
-                data.xp = xpBar.SkillBarAmount.Text -- Pl: "176 / 450"
+        local frame = p.PlayerGui.Skills.SkillsHolder.SkillsScrollingFrame
+        for _, item in pairs(frame:GetChildren()) do
+            local title = item:FindFirstChild("SkillTitle")
+            if title and title.Text:find("Janitor") then
+                lvl = tonumber(title.Text:match("%d+")) or 1
+                break
             end
         end
     end)
-    return data
+    return lvl
 end
 
-local startData = GetJanitorData()
 local Window = Rayfield:CreateWindow({
-   Name = "MATRIX HUB | V4.4",
-   LoadingTitle = "Initializing Neural Link...",
+   Name = "MATRIX HUB | V4.7",
+   LoadingTitle = "Matrix Anti-Stuck System",
    Theme = "Green",
    ConfigurationSaving = { Enabled = false }
 })
 
-local FarmTab = Window:CreateTab("Auto Farm", 4483362458)
-local StatsTab = Window:CreateTab("Stats", 4483362458)
+local FarmTab = Window:CreateTab("Main", 4483362458)
+local SettingsTab = Window:CreateTab("Settings", 4483362458)
 
--- ÉLŐ CÍMKÉK
-local LvlLabel = StatsTab:CreateLabel("Current Level: " .. startData.level)
-local XPLabel = StatsTab:CreateLabel("Current XP: " .. startData.xp)
-
--- === ÉLŐ FRISSÍTŐ CIKLUS ===
--- Ez a háttérben fut és 5 másodpercenként frissíti a kijelzőt
-task.spawn(function()
-    while true do
-        local liveData = GetJanitorData()
-        LvlLabel:Set("Current Level: " .. liveData.level)
-        XPLabel:Set("Current XP: " .. liveData.xp)
-        task.wait(5) 
-    end
-end)
+-- Keybind a menühöz
+FarmTab:CreateKeybind({
+   Name = "Minimize Menu",
+   CurrentKeybind = "RightShift",
+   HoldToInteract = false,
+   Callback = function() Rayfield:ToggleUI() end,
+})
 
 FarmTab:CreateToggle({
-   Name = "Auto-Adapting Farm",
+   Name = "Start Smart Farm",
    CurrentValue = false,
    Callback = function(Value)
       _G.AutoFarm = Value
@@ -68,23 +52,32 @@ FarmTab:CreateToggle({
                   local root = game.Players.LocalPlayer.Character.HumanoidRootPart
                   local target = nil
                   local minDist = math.huge
-                  local myLevel = GetJanitorData().level -- Mindig az aktuális szinttel számol
+                  local myLevel = GetJanitorLevel()
 
+                  -- EZ AZ A RÉSZ, AMIT KERESTÉL:
                   for _, v in pairs(workspace:GetDescendants()) do
                      if v:IsA("BasePart") and v.Name:lower():find("puddle") then
-                        -- Sárga folt szűrő (Color alapú)
-                        local isYellow = (v.Color.G > 0.7 and v.Color.R > 0.7)
                         
-                        if (not isYellow or myLevel >= 20) and not IgnoreList[v] and v.Transparency < 1 then
-                           local d = (root.Position - v.Position).Magnitude
-                           if d < minDist then
-                              minDist = d
-                              target = v
+                        -- 1. SZINT ELLENŐRZÉS (SÁRGA SZÍN SZŰRÉS)
+                        -- Ha a Piros és Zöld csatorna is erős, az sárgát jelent
+                        local isYellow = (v.Color.R > 0.8 and v.Color.G > 0.8)
+                        
+                        if isYellow and myLevel < 20 then
+                           -- Ha sárga és kicsi a szinted, átugorjuk (nem csinálunk semmit)
+                        else
+                           -- 2. TÁVOLSÁG ELLENŐRZÉS (Csak ha nem tiltott folt)
+                           if not IgnoreList[v] and v.Transparency < 1 then
+                              local d = (root.Position - v.Position).Magnitude
+                              if d < minDist then
+                                 minDist = d
+                                 target = v
+                              end
                            end
                         end
                      end
                   end
 
+                  -- MOZGÁS A KIVÁLASZTOTT CÉLPONTHOZ
                   if target then
                      local waypoints = PathLogic.GetPath(root.Position, target.Position)
                      if #waypoints > 0 then
@@ -93,7 +86,7 @@ FarmTab:CreateToggle({
                            Mover.MoveToPoint(wp.Position, wp.Action == Enum.PathWaypointAction.Jump)
                         end
                         IgnoreList[target] = true
-                        task.wait(6)
+                        task.wait(6.5)
                      else
                         IgnoreList[target] = true
                         task.wait(0.1)
@@ -108,3 +101,5 @@ FarmTab:CreateToggle({
       end
    end,
 })
+
+SettingsTab:CreateButton({ Name = "Unload", Callback = function() _G.AutoFarm = false Rayfield:Destroy() end })
