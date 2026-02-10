@@ -1,5 +1,5 @@
--- MATRIX NAVIGATION MODULE V1.1
--- Description: Advanced pathfinding with stuck-prevention logic.
+-- MATRIX NAVIGATION MODULE V1.3 - ANTI-ANIMATION LOCK
+-- Description: Bypasses animation-related freezes.
 
 local PathfindingService = game:GetService("PathfindingService")
 local Navigation = {}
@@ -9,10 +9,15 @@ function Navigation.WalkTo(targetPosition)
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     local root = character:FindFirstChild("HumanoidRootPart")
 
+    -- Kényszerített állapot-reset: Megszakítjuk a beragadt animációkat
+    for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
+        track:Stop()
+    end
+
     local path = PathfindingService:CreatePath({
-        AgentRadius = 2.5, -- Kicsit kisebb, hogy beférjen szűkebb helyekre is
+        AgentRadius = 2.0,
         AgentCanJump = true,
-        WaypointSpacing = 3
+        WaypointSpacing = 2
     })
 
     local success, _ = pcall(function()
@@ -24,35 +29,26 @@ function Navigation.WalkTo(targetPosition)
         for i, waypoint in ipairs(waypoints) do
             if not _G.AutoFarm then break end
             
-            if waypoint.Action == Enum.PathWaypointAction.Jump then
-                humanoid.Jump = true
-            end
-            
+            -- Ha a piros hiba miatt a humanoid "PlatformStand" vagy "Seated" állapotba kerülne, reseteljük
+            humanoid.PlatformStand = false
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+
             humanoid:MoveTo(waypoint.Position)
             
             local reached = false
             local conn = humanoid.MoveToFinished:Connect(function() reached = true end)
             
             local timeout = 0
-            local lastPos = root.Position
-            
-            while not reached and timeout < 1.5 do -- Rövidebb timeout a pörgősebb mozgáshoz
+            while not reached and timeout < 1.2 do
                 task.wait(0.1)
                 timeout = timeout + 0.1
-                
-                -- ELAKADÁS ELLENI ELLENŐRZÉS:
-                if (root.Position - lastPos).Magnitude < 0.1 and timeout > 0.4 then
-                    humanoid.Jump = true -- Megpróbál kiszabadulni ugrással
+                -- Ha nem mozdulunk a piros hiba miatt, ugrással kényszerítjük a fizikai motort
+                if humanoid.MoveDirection.Magnitude == 0 and timeout > 0.3 then
+                    humanoid.Jump = true
                 end
-                lastPos = root.Position
             end
             conn:Disconnect()
-            
-            -- Ha nagyon beragadt egy ponthoz, inkább szakítsuk meg ezt az utat
-            if timeout >= 1.5 and not reached then
-                warn("Matrix: Waypoint timeout, recalculating...")
-                return false 
-            end
+            if timeout >= 1.2 then break end
         end
         return true
     end
