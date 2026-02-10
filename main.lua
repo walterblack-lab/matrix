@@ -1,24 +1,22 @@
--- MATRIX HUB V3.1 - MAIN CONTROLLER
--- Description: Modular controller that calls the navigation file.
+-- MATRIX HUB V3.2 - ULTIMATE FAILSAFE
+-- Description: Dynamic cleaning check to bypass CoreGui and Animation errors.
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-
--- Itt hívjuk be a navigációs fájlt a GitHubról
 local Navigation = loadstring(game:HttpGet("https://raw.githubusercontent.com/walterblack-lab/matrix/refs/heads/main/navigation.lua"))()
 
 _G.AutoFarm = false
 local IgnoreList = {}
 
 local Window = Rayfield:CreateWindow({
-   Name = "MATRIX HUB | V3.1 MODULAR",
-   LoadingTitle = "Connecting Modules...",
+   Name = "MATRIX | ANTI-FREEZE V3.2",
+   LoadingTitle = "Bypassing Game Errors...",
    ConfigurationSaving = { Enabled = false }
 })
 
 local FarmTab = Window:CreateTab("Auto Farm", 4483362458)
 
 FarmTab:CreateToggle({
-   Name = "GPS Guided Farm",
+   Name = "Dynamic Cleaning Farm",
    CurrentValue = false,
    Callback = function(Value)
       _G.AutoFarm = Value
@@ -31,7 +29,7 @@ FarmTab:CreateToggle({
                   local target = nil
                   local minDist = 200
 
-                  -- Pocsolya keresése
+                  -- 1. KERESÉS
                   for _, v in pairs(workspace:GetDescendants()) do
                      if v:IsA("BasePart") and v.Name:lower():find("puddle") then
                         if not IgnoreList[v] and v.Transparency < 1 then
@@ -44,13 +42,27 @@ FarmTab:CreateToggle({
                      end
                   end
 
+                  -- 2. MOZGÁS ÉS OKOS VÁRAKOZÁS
                   if target then
-                     -- A navigációs modul használata
                      local reached = Navigation.WalkTo(target.Position)
+                     
                      if reached then
                         IgnoreList[target] = true
-                        local waitTime = (target.Size.Magnitude > 10) and 11 or 6
-                        task.wait(waitTime)
+                        print("Matrix: Standing on puddle. Monitoring progress...")
+                        
+                        local startTime = tick()
+                        local timeLimit = (target.Size.Magnitude > 10) and 13 or 8
+                        
+                        -- FAILSAFE CIKLUS: Addig várunk, amíg ott a folt, 
+                        -- DE ha lefagy a játék (piros hiba), az időkorlát továbbléptet.
+                        while target and target.Parent == workspace and target.Transparency < 1 and _G.AutoFarm do
+                           task.wait(0.5)
+                           if (tick() - startTime) > timeLimit then
+                              warn("Matrix: Game freeze detected (Animation/UI error). Forcing next target.")
+                              break 
+                           end
+                        end
+                        print("Matrix: Spot cleared or bypassed.")
                      end
                   end
                end)
@@ -62,10 +74,18 @@ FarmTab:CreateToggle({
    end,
 })
 
--- Settings / Unload
+-- Settings / Manual Reset
 local SettingsTab = Window:CreateTab("Settings", 4483362458)
 SettingsTab:CreateButton({
-   Name = "Unload Script",
+   Name = "Clear Ignore List (If stuck)",
+   Callback = function()
+      IgnoreList = {}
+      Rayfield:Notify({Title = "System Reset", Content = "Ignore list cleared!", Duration = 2})
+   end,
+})
+
+SettingsTab:CreateButton({
+   Name = "Unload",
    Callback = function()
       _G.AutoFarm = false
       Rayfield:Destroy()
