@@ -1,5 +1,5 @@
--- MATRIX HUB V4.8 - LIVE STATUS EDITION
--- Code Description: Adds a dynamic status label to show what the bot is currently cleaning.
+-- MATRIX HUB V4.9 - DYNAMIC CLEANING TIME
+-- Description: Adjusts wait time based on object size to prevent leaving half-finished spills.
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local PathLogic = loadstring(game:HttpGet("https://raw.githubusercontent.com/walterblack-lab/matrix/refs/heads/main/path_logic.lua"))()
@@ -9,15 +9,13 @@ _G.AutoFarm = false
 local IgnoreList = {}
 
 local Window = Rayfield:CreateWindow({
-   Name = "MATRIX HUB | V4.8",
-   LoadingTitle = "Status System Online",
+   Name = "MATRIX HUB | V4.9",
+   LoadingTitle = "Optimizing Cleaning Cycles...",
    Theme = "Green",
    ConfigurationSaving = { Enabled = false }
 })
 
 local FarmTab = Window:CreateTab("Main", 4483362458)
-
--- ÉLŐ ÁLLAPOTJELZŐ CÍMKE
 local StatusLabel = FarmTab:CreateLabel("Status: Idle")
 
 FarmTab:CreateToggle({
@@ -29,11 +27,11 @@ FarmTab:CreateToggle({
          task.spawn(function()
             while _G.AutoFarm do
                pcall(function()
-                  StatusLabel:Set("Status: Searching for targets...")
-                  
                   local root = game.Players.LocalPlayer.Character.HumanoidRootPart
                   local target = nil
                   local minDist = math.huge
+
+                  StatusLabel:Set("Status: Searching...")
 
                   for _, v in pairs(workspace:GetDescendants()) do
                      if v:IsA("BasePart") and v.Name:lower():find("puddle") then
@@ -48,39 +46,40 @@ FarmTab:CreateToggle({
                   end
 
                   if target then
-                     -- MEGHATÁROZZUK A TÍPUST A SZÍN ALAPJÁN
+                     -- TÍPUS ÉS MÉRET MEGHATÁROZÁSA
+                     local isLarge = target.Size.Magnitude > 10 -- A nagy foltoknak nagyobb a kiterjedése
                      local isYellow = (target.Color.R > 0.8 and target.Color.G > 0.8)
-                     local spillType = isYellow and "🟡 Yellow Spill" or "🔵 Blue Puddle"
+                     local name = isYellow and "🟡 Yellow Spill" or "🔵 Blue Puddle"
                      
-                     StatusLabel:Set("Status: Pathfinding to " .. spillType)
+                     -- DINAMIKUS IDŐZÍTÉS
+                     -- Ha nagy, 11 másodperc, ha kicsi, 6.5 másodperc
+                     local waitTime = isLarge and 11 or 6.5
+                     
+                     StatusLabel:Set("Status: Moving to " .. name)
                      
                      local waypoints = PathLogic.GetPath(root.Position, target.Position)
                      if #waypoints > 0 then
-                        StatusLabel:Set("Status: Moving to " .. spillType)
                         for _, wp in ipairs(waypoints) do
                            if not _G.AutoFarm then break end
                            Mover.MoveToPoint(wp.Position, wp.Action == Enum.PathWaypointAction.Jump)
                         end
                         
-                        StatusLabel:Set("Status: Cleaning " .. spillType .. "...")
+                        StatusLabel:Set("Status: Cleaning " .. name .. " (" .. waitTime .. "s)")
                         IgnoreList[target] = true
-                        task.wait(6.5) -- Takarítási idő
+                        task.wait(waitTime) -- Itt várja meg a teljes folyamatot
                      else
-                        StatusLabel:Set("Status: Path Blocked - Skipping")
                         IgnoreList[target] = true
                         task.wait(0.1)
                      end
-                  else
-                     StatusLabel:Set("Status: No targets found")
                   end
                end)
                task.wait(0.5)
             end
-            StatusLabel:Set("Status: Idle")
          end)
       else
-         StatusLabel:Set("Status: Idle")
+         _G.AutoFarm = false
          IgnoreList = {}
+         StatusLabel:Set("Status: Idle")
       end
    end,
 })
