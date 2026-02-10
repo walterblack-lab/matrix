@@ -1,5 +1,5 @@
--- MATRIX NAVIGATION MODULE V1.0
--- Description: Advanced pathfinding to avoid obstacles.
+-- MATRIX NAVIGATION MODULE V1.1
+-- Description: Advanced pathfinding with stuck-prevention logic.
 
 local PathfindingService = game:GetService("PathfindingService")
 local Navigation = {}
@@ -9,11 +9,10 @@ function Navigation.WalkTo(targetPosition)
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     local root = character:FindFirstChild("HumanoidRootPart")
 
-    -- Útvonal tervezése: nagyobb rádiusz az asztalok elkerüléséhez
     local path = PathfindingService:CreatePath({
-        AgentRadius = 3, 
+        AgentRadius = 2.5, -- Kicsit kisebb, hogy beférjen szűkebb helyekre is
         AgentCanJump = true,
-        WaypointSpacing = 4
+        WaypointSpacing = 3
     })
 
     local success, _ = pcall(function()
@@ -22,7 +21,7 @@ function Navigation.WalkTo(targetPosition)
 
     if success and path.Status == Enum.PathStatus.Success then
         local waypoints = path:GetWaypoints()
-        for _, waypoint in ipairs(waypoints) do
+        for i, waypoint in ipairs(waypoints) do
             if not _G.AutoFarm then break end
             
             if waypoint.Action == Enum.PathWaypointAction.Jump then
@@ -35,15 +34,25 @@ function Navigation.WalkTo(targetPosition)
             local conn = humanoid.MoveToFinished:Connect(function() reached = true end)
             
             local timeout = 0
-            while not reached and timeout < 2 do
+            local lastPos = root.Position
+            
+            while not reached and timeout < 1.5 do -- Rövidebb timeout a pörgősebb mozgáshoz
                 task.wait(0.1)
                 timeout = timeout + 0.1
-                -- Anti-stuck: ha beragad, ugrik egyet
-                if humanoid.MoveDirection.Magnitude == 0 and timeout > 0.5 then
-                    humanoid.Jump = true
+                
+                -- ELAKADÁS ELLENI ELLENŐRZÉS:
+                if (root.Position - lastPos).Magnitude < 0.1 and timeout > 0.4 then
+                    humanoid.Jump = true -- Megpróbál kiszabadulni ugrással
                 end
+                lastPos = root.Position
             end
             conn:Disconnect()
+            
+            -- Ha nagyon beragadt egy ponthoz, inkább szakítsuk meg ezt az utat
+            if timeout >= 1.5 and not reached then
+                warn("Matrix: Waypoint timeout, recalculating...")
+                return false 
+            end
         end
         return true
     end
